@@ -3,6 +3,7 @@ import os
 import numpy as np
 import glob
 import yaml
+import pickle
 
 desiredFrames=20
 vidcap = cv2.VideoCapture('data\calibration.mp4')
@@ -57,5 +58,11 @@ data = {'ret': ret,
         'tvecs': np.asarray(tvecs).tolist()}
 
 # salvataggio dei parametri in un file yaml
-with open("calibration_matrix.yaml", "w") as f:
-    yaml.dump(data, f)
+#with open("calibration_matrix.yaml", "w") as f:
+#    yaml.dump(data, f)
+afile = open('mtx.pkl', 'wb')
+pickle.dump(mtx, afile)
+afile.close()
+afile = open('dist.pkl', 'wb')
+pickle.dump(dist, afile)
+afile.close()
