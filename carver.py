@@ -2,59 +2,97 @@ import cv2
 import numpy as np
 import glob
 
-def draw(img, corners, imgpts):
-    corner = tuple(corners[0].ravel())
-    img = cv2.line(img, corner, tuple(imgpts[0].ravel()), (255,0,0), 5)
-    img = cv2.line(img, corner, tuple(imgpts[1].ravel()), (0,255,0), 5)
-    img = cv2.line(img, corner, tuple(imgpts[2].ravel()), (0,0,255), 5)
-    return img
-
-
 vidcap = cv2.VideoCapture('data\obj01.mp4')
 vidcap.set(1, 50)
-ret, frame = vidcap.read()
-#cv2.imshow('frame 50',frame)
+ret, image = vidcap.read()
+image = image[:,1020:1800]
+image = cv2.rotate(image, cv2.cv2.ROTATE_90_CLOCKWISE)
+img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+ret, thresh = cv2.threshold(img_gray, 150, 255, cv2.THRESH_BINARY)
+# visualize the binary image
+#cv2.imshow('Binary image', thresh)
 #cv2.waitKey(0)
-#cv2.destroyAllWindows()
-
-mtx = np.load("mtx.pkl", allow_pickle=True)
-dist = np.load("dist.pkl", allow_pickle=True)
-
-criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-objp = np.zeros((9*6,3), np.float32)
-objp[:,:2] = np.mgrid[0:6,0:9].T.reshape(-1,2)
-axis = np.float32([[3,0,0], [0,3,0], [0,0,-3]]).reshape(-1,3)
-
-img = frame
-gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
-ret, corners = cv2.findChessboardCorners(gray, (6,9),None)
-if ret == True:
-    corners2 = cv2.cornerSubPix(gray,corners,(11,11),(-1,-1),criteria)
-    # Find the rotation and translation vectors.
-    ret,rvecs, tvecs = cv2.solvePnP(objp, corners2, mtx, dist)
-    # project 3D points to image plane
-    imgpts, jac = cv2.projectPoints(axis, rvecs, tvecs, mtx, dist)
-    img = draw(img,corners2,imgpts)
-    cv2.imshow('img',img)
-    k = cv2.waitKey(0) & 0xFF
-    if k == ord('s'):
-        cv2.imwrite(frame[:6]+'.png', img)
-else:
-    print("fail")
-
-#for fname in glob.glob(r"frames\*.jpg"):
-#    img = cv2.imread(fname)
-#    gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
-#    ret, corners = cv2.findChessboardCorners(gray, (6,9),None)
-#    if ret == True:
-#        corners2 = cv2.cornerSubPix(gray,corners,(11,11),(-1,-1),criteria)
-        # Find the rotation and translation vectors.
-#        ret,rvecs, tvecs = cv2.solvePnP(objp, corners2, mtx, dist)
-        # project 3D points to image plane
-#        imgpts, jac = cv2.projectPoints(axis, rvecs, tvecs, mtx, dist)
-#        img = draw(img,corners2,imgpts)
-#        cv2.imshow('img',img)
-#        k = cv2.waitKey(0) & 0xFF
-#        if k == ord('s'):
-#            cv2.imwrite(fname[:6]+'.png', img)
+#cv2.imwrite('image_thres1.jpg', thresh)
 cv2.destroyAllWindows()
+
+contours, hierarchy = cv2.findContours(image=thresh, mode=cv2.RETR_TREE, method=cv2.CHAIN_APPROX_NONE)
+                                     
+# draw contours on the original image
+image_copy = image.copy()
+cv2.drawContours(image=image_copy, contours=contours, contourIdx=-1, color=(0, 255, 0), thickness=2, lineType=cv2.LINE_AA)
+               
+# see the results
+#cv2.imshow('None approximation', image_copy)
+#cv2.waitKey(0)
+#cv2.imwrite('contours_none_image1.jpg', image_copy)
+cv2.destroyAllWindows()
+
+#pts1 = np.float32([[0, 400], [780, 400],
+                       #[0, 1080], [780, 1080]])
+pts1 = np.float32([[0, 10], [880, 120],
+                       [0, 600], [880, 600]])
+pts2 = np.float32([[0, 0], [400, 0],
+                    [0, 640], [400, 640]])
+    
+# Apply Perspective Transform Algorithm
+matrix = cv2.getPerspectiveTransform(pts1, pts2)
+result = cv2.warpPerspective(image, matrix, (500, 600))
+    
+# Wrap the transformed image
+""" cv2.imshow('frame', image) # Initial Capture
+cv2.waitKey(0)
+cv2.imshow('frame1', result)
+cv2.waitKey(0)
+cv2.destroyAllWindows() """
+
+
+while True:
+    
+    # Read a new frame.
+    ret, image = vidcap.read()
+
+    # Check if frame is not read correctly.
+    if not ret:
+        
+        # Break the loop.
+
+        break
+    
+    image = image[:,1020:1800]
+    image = cv2.rotate(image, cv2.cv2.ROTATE_90_CLOCKWISE)
+    
+    pts1 = np.float32([[0, 120], [880, 120],
+                       [0, 600], [880, 600]])
+    pts2 = np.float32([[0, 0], [400, 0],
+                        [0, 640], [400, 640]])
+        
+    # Apply Perspective Transform Algorithm
+    matrix = cv2.getPerspectiveTransform(pts1, pts2)
+    result = cv2.warpPerspective(image, matrix, (500, 600))
+    img_gray = cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
+    ret, thresh = cv2.threshold(img_gray, 150, 255, cv2.THRESH_BINARY)
+    contours, hierarchy = cv2.findContours(image=thresh, mode=cv2.RETR_TREE, method=cv2.CHAIN_APPROX_NONE)
+    image_copy = result.copy()
+    cv2.drawContours(image=image_copy, contours=contours, contourIdx=-1, color=(0, 255, 0), thickness=2, lineType=cv2.LINE_AA)
+    # Display
+    cv2.imshow("original", image)
+    cv2.imshow("res", image_copy)
+
+    # Wait until a key is pressed.
+    # Retreive the ASCII code of the key pressed
+    k = cv2.waitKey(1) & 0xff
+    
+    # Check if 'q' key is pressed.
+    if k == ord('q'):
+        
+        # Break the loop.
+        break
+
+# Release the VideoCapture Object.
+vidcap.release()
+
+# Close the windows.q
+cv2.destroyAllWindows()
+#cv2.imshow("image", image)
+#cv2.waitKey(0)
+#cv2.destroyAllWindows() 
