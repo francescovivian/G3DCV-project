@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import glob
 import pickle
+import matplotlib.pyplot as plt
 
 def draw(img, corners, imgpts):
     corner = tuple(corners[0].ravel())
@@ -73,11 +74,10 @@ def estraiSilhouette(image):
 
 def disegnaBordiDisco(image):
     image = image[:,1020:1800]
+    image = cv2.rotate(image, cv2.cv2.ROTATE_90_CLOCKWISE)
     disegnaBordi(image)
 
-def disegnaBordi(image):
-    image = cv2.rotate(image, cv2.cv2.ROTATE_90_CLOCKWISE)
-    
+def trasformaProspettiva(image):
     pts1 = np.float32([[0, 120], [880, 120],
                        [0, 600], [880, 600]])
     pts2 = np.float32([[0, 0], [400, 0],
@@ -86,6 +86,10 @@ def disegnaBordi(image):
     # Apply Perspective Transform Algorithm
     matrix = cv2.getPerspectiveTransform(pts1, pts2)
     result = cv2.warpPerspective(image, matrix, (500, 600))
+    return result
+
+def disegnaBordi(image):
+    result = trasformaProspettiva(image)
     img_gray = cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
     ret, thresh = cv2.threshold(img_gray, 150, 255, cv2.THRESH_BINARY)
     contours, hierarchy = cv2.findContours(image=thresh, mode=cv2.RETR_TREE, method=cv2.CHAIN_APPROX_NONE)
@@ -96,20 +100,70 @@ def disegnaBordi(image):
     cv2.imshow("borders", image_copy)
 
 
+def carving(image):
+    image = image[140:950,320:1030]
+    image = cv2.rotate(image, cv2.cv2.ROTATE_90_CLOCKWISE)
+    start_point = (100, 50)
+    end_point = (730, 680)
+    ticks = 2
+    w = end_point[0] - start_point[0]
+    #h = end_point[1] - start_point[1]
+    step = round(w/ticks)
+    color = (0, 0, 255)
+    thickness = 1
+    for i in range(ticks):
+        for j in range(ticks):
+            start = (start_point[0]+i*step, start_point[1]+j*step)
+            end = (start_point[0]+(i+1)*step, start_point[1]+(j+1)*step)
+            image = cv2.rectangle(image, start, end, color, thickness)
+    cv2.imshow('box', image) 
+
+def estraiContorni(image):
+    img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    ret, thresh = cv2.threshold(img_gray, 150, 255, cv2.THRESH_BINARY)
+    contours, hierarchy = cv2.findContours(image=thresh, mode=cv2.RETR_TREE, method=cv2.CHAIN_APPROX_NONE)
+    return contours
+
+def matchMarker(image, marker):
+
+    image = image[:,1020:1800]
+    image = cv2.rotate(image, cv2.cv2.ROTATE_90_CLOCKWISE)
+
+    result = trasformaProspettiva(image)
+    contorniDisco = estraiContorni(result)
+    contornoMarker = estraiContorni(marker)[1]
+    contorniOk = ()
+    for cont in contorniDisco:
+        ret = cv2.matchShapes(cont,contornoMarker,1,0.0)
+        if ret < 0.5:
+            contorniOk = contorniOk + (cont,)
+    #cv2.imshow('result', result)
+    cv2.drawContours(image=result, contours=contorniOk, contourIdx=-1, color=(0, 255, 0), thickness=2, lineType=cv2.LINE_AA)
+    # Display
+    cv2.imshow("original", image)
+    cv2.imshow("borders", result)
+
+
 vidcap = cv2.VideoCapture('data\obj01.mp4')
+#ret, image = vidcap.read()
+marker = cv2.imread("mark.png")
+
 with open('mtx.pkl', 'rb') as f:
     mtx = pickle.load(f)
 with open('dist.pkl', 'rb') as f:
     dist = pickle.load(f)
 
+#estraiContorni(marker)
+#matchMarker(image, marker)
 while True:    
     ret, image = vidcap.read()
     if not ret:
         break
-    estraiSilhouette(image)
+    #estraiSilhouette(image)
     #disegnaBordiDisco(image)
     #estimatePose(image,mtx,dist)
-
+    #carving(image)
+    matchMarker(image, marker)
     k = cv2.waitKey(1) & 0xff    
     # Check if 'q' key is pressed.
     if k == ord('q'):
