@@ -78,10 +78,10 @@ def disegnaBordiDisco(image):
     disegnaBordi(image)
 
 def trasformaProspettiva(image):
-    pts1 = np.float32([[0, 120], [880, 120],
-                       [0, 600], [880, 600]])
+    pts1 = np.float32([[0, 125], [880, 125],
+                       [0, 420], [880, 420]])
     pts2 = np.float32([[0, 0], [400, 0],
-                        [0, 640], [400, 640]])
+                        [0, 400], [400, 400]])
         
     # Apply Perspective Transform Algorithm
     matrix = cv2.getPerspectiveTransform(pts1, pts2)
@@ -124,6 +124,46 @@ def estraiContorni(image):
     contours, hierarchy = cv2.findContours(image=thresh, mode=cv2.RETR_TREE, method=cv2.CHAIN_APPROX_NONE)
     return contours
 
+def getAngle(a, b, c):
+    ba = a - b
+    bc = c - b
+    #print(ba)
+    cosine_angle = np.dot(ba, bc.transpose()) / (np.linalg.norm(ba) * np.linalg.norm(bc))
+    angle = np.arccos(cosine_angle)
+
+    return np.round(np.degrees(angle))
+
+def poseEstimation(image):
+    image_copy = image.copy()
+    contorni = estraiContorni(image)
+    approxContorni = ()
+    for cont in contorni:
+        M = cv2.moments(cont)
+        if M['m00'] != 0:
+            cx = int(M['m10']/M['m00'])
+            cy = int(M['m01']/M['m00'])
+            center = np.array([cx,cy])
+        #print(center)
+        approx_c = cv2.approxPolyDP(cont,5,True)
+        if len(approx_c) == 5:
+            convex = concave = 0
+            for i in range(5):
+                #x, y = approx_c[i][0]
+                angle = getAngle(center, np.array(approx_c[i%5]), np.array(approx_c[(i+1)%5])) + getAngle(np.array(approx_c[(i-1)%5]), np.array(approx_c[i%5]), center)
+                #cv2.putText(image_copy, str(angle), (x, y), cv2.FONT_HERSHEY_COMPLEX, 0.5, 0, 1)
+                if angle < 180:
+                    convex += 1
+                elif angle >180:
+                    concave +=1
+                #print(type(approx_c[0]))
+            #print("convex: " + str(convex) + " concave: " + str(concave))
+            if convex == 4 and concave==1:
+                approxContorni = approxContorni + (approx_c,)
+
+    cv2.drawContours(image=image_copy, contours=approxContorni, contourIdx=-1, color=(0, 255, 0), thickness=2, lineType=cv2.LINE_AA)
+    # Display
+    cv2.imshow("borders", image_copy)
+
 def matchMarker(image, marker):
 
     image = image[:,1020:1800]
@@ -135,7 +175,7 @@ def matchMarker(image, marker):
     contorniOk = ()
     for cont in contorniDisco:
         ret = cv2.matchShapes(cont,contornoMarker,1,0.0)
-        if ret < 0.5:
+        if ret < 0.2:
             contorniOk = contorniOk + (cont,)
     #cv2.imshow('result', result)
     cv2.drawContours(image=result, contours=contorniOk, contourIdx=-1, color=(0, 255, 0), thickness=2, lineType=cv2.LINE_AA)
@@ -143,16 +183,42 @@ def matchMarker(image, marker):
     cv2.imshow("original", image)
     cv2.imshow("borders", result)
 
+def featureMatcher(image, mark):
+    image = image[:,1020:1800]
+    image = cv2.rotate(image, cv2.cv2.ROTATE_90_CLOCKWISE)
+
+    image = trasformaProspettiva(image)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    mark = cv2.cvtColor(mark, cv2.COLOR_BGR2GRAY)
+    #ret, image = cv2.threshold(image, 150, 255, cv2.THRESH_BINARY)
+    # Initiate SIFT detector
+    sift = cv2.SIFT_create()
+    # find the keypoints and descriptors with SIFT
+    kp1, des1 = sift.detectAndCompute(image,None)
+    kp2, des2 = sift.detectAndCompute(mark,None)
+    # BFMatcher with default params
+    bf = cv2.BFMatcher()
+    matches = bf.knnMatch(des1,des2,k=2)
+    # Apply ratio test
+    good = []
+    for m,n in matches:
+        if m.distance < 0.75*n.distance:
+            good.append([m])
+    # cv.drawMatchesKnn expects list of lists as matches.
+    img3 = cv2.drawMatchesKnn(image,kp1,mark,kp2,good,None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+    cv2.imshow("result",img3)
+    #,plt.show()
 
 vidcap = cv2.VideoCapture('data\obj01.mp4')
 #ret, image = vidcap.read()
-marker = cv2.imread("mark.png")
+marker = cv2.imread("mark3.png")
+#featureMatcher(image,marker)
+#poseEstimation(image)
 
 with open('mtx.pkl', 'rb') as f:
     mtx = pickle.load(f)
 with open('dist.pkl', 'rb') as f:
     dist = pickle.load(f)
-
 #estraiContorni(marker)
 #matchMarker(image, marker)
 while True:    
@@ -163,7 +229,9 @@ while True:
     #disegnaBordiDisco(image)
     #estimatePose(image,mtx,dist)
     #carving(image)
-    matchMarker(image, marker)
+    #matchMarker(image, marker)
+    #featureMatcher(image,marker)
+    poseEstimation(image)
     k = cv2.waitKey(1) & 0xff    
     # Check if 'q' key is pressed.
     if k == ord('q'):
