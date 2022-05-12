@@ -137,13 +137,13 @@ def poseEstimation(image):
     image_copy = image.copy()
     contorni = estraiContorni(image)
     approxContorni = ()
+    area=0
     for cont in contorni:
         M = cv2.moments(cont)
         if M['m00'] != 0:
             cx = int(M['m10']/M['m00'])
             cy = int(M['m01']/M['m00'])
             center = np.array([cx,cy])
-        #print(center)
         approx_c = cv2.approxPolyDP(cont,5,True)
         if len(approx_c) == 5:
             convex = concave = 0
@@ -155,10 +155,11 @@ def poseEstimation(image):
                     convex += 1
                 elif angle >180:
                     concave +=1
-                #print(type(approx_c[0]))
-            #print("convex: " + str(convex) + " concave: " + str(concave))
             if convex == 4 and concave==1:
+                area += cv2.contourArea(approx_c)
                 approxContorni = approxContorni + (approx_c,)
+    avg_area = area/len(approxContorni)
+    approxContorni = tuple(c for c in approxContorni if cv2.contourArea(c)>avg_area/3)
 
     cv2.drawContours(image=image_copy, contours=approxContorni, contourIdx=-1, color=(0, 255, 0), thickness=2, lineType=cv2.LINE_AA)
     # Display
