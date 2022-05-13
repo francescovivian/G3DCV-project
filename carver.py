@@ -136,7 +136,7 @@ def getAngle(a, b, c):
 def poseEstimation(image):
     image_copy = image.copy()
     contorni = estraiContorni(image)
-    approxContorni = ()
+    approxContorni = []
     area=0
     for cont in contorni:
         M = cv2.moments(cont)
@@ -154,14 +154,24 @@ def poseEstimation(image):
                 if angle < 180:
                     convex += 1
                 elif angle >180:
+                    indexC = i
                     concave +=1
             if convex == 4 and concave==1:
                 area += cv2.contourArea(approx_c)
-                approxContorni = approxContorni + (approx_c,)
-    avg_area = area/len(approxContorni)
-    approxContorni = tuple(c for c in approxContorni if cv2.contourArea(c)>avg_area/3)
+                approxContorni.append([approx_c, indexC])
 
-    cv2.drawContours(image=image_copy, contours=approxContorni, contourIdx=-1, color=(0, 255, 0), thickness=2, lineType=cv2.LINE_AA)
+    avg_area = area/len(approxContorni)
+    approxContorni = list(c for c in approxContorni if cv2.contourArea(c[0])>avg_area/3)
+    marksCont = tuple(c[0] for c in approxContorni)
+    indexConcave = tuple(c[1] for c in approxContorni)
+
+    cv2.drawContours(image=image_copy, contours=marksCont, contourIdx=-1, color=(0, 255, 0), thickness=2, lineType=cv2.LINE_AA)
+    for c,cont in enumerate(marksCont):
+        for i in range(5):
+            x, y = cont[(i+indexConcave[c])%5][0]
+            cv2.putText(image_copy, str(i), (x, y), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0, 0, 255), 1)
+
+    
     # Display
     cv2.imshow("borders", image_copy)
 
