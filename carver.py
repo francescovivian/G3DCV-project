@@ -72,32 +72,7 @@ def estraiSilhouette(image):
     cv2.imshow("original", image)
     cv2.imshow("res", res)
 
-def disegnaBordiDisco(image):
-    image = image[:,1020:1800]
-    image = cv2.rotate(image, cv2.cv2.ROTATE_90_CLOCKWISE)
-    disegnaBordi(image)
 
-def trasformaProspettiva(image):
-    pts1 = np.float32([[0, 125], [880, 125],
-                       [0, 420], [880, 420]])
-    pts2 = np.float32([[0, 0], [400, 0],
-                        [0, 400], [400, 400]])
-        
-    # Apply Perspective Transform Algorithm
-    matrix = cv2.getPerspectiveTransform(pts1, pts2)
-    result = cv2.warpPerspective(image, matrix, (500, 600))
-    return result
-
-def disegnaBordi(image):
-    result = trasformaProspettiva(image)
-    img_gray = cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
-    ret, thresh = cv2.threshold(img_gray, 150, 255, cv2.THRESH_BINARY)
-    contours, hierarchy = cv2.findContours(image=thresh, mode=cv2.RETR_TREE, method=cv2.CHAIN_APPROX_NONE)
-    image_copy = result.copy()
-    cv2.drawContours(image=image_copy, contours=contours, contourIdx=-1, color=(0, 255, 0), thickness=2, lineType=cv2.LINE_AA)
-    # Display
-    cv2.imshow("original", image)
-    cv2.imshow("borders", image_copy)
 
 
 def carving(image):
@@ -124,6 +99,81 @@ def estraiContorni(image):
     contours, hierarchy = cv2.findContours(image=thresh, mode=cv2.RETR_TREE, method=cv2.CHAIN_APPROX_NONE)
     return contours
 
+def createLineIterator(P1, P2, img):
+    """
+    Iterator implementation found on the web
+    Produces and array that consists of the coordinates and intensities of each pixel in a line between two points
+
+    Parameters:
+        -P1: a numpy array that consists of the coordinate of the first point (x,y)
+        -P2: a numpy array that consists of the coordinate of the second point (x,y)
+        -img: the image being processed
+
+    Returns:
+        -it: a numpy array that consists of the coordinates and intensities of each pixel in the radii (shape: [numPixels, 3], row = [x,y,intensity])     
+    """
+    #define local variables for readability
+    imageH = img.shape[0]
+    imageW = img.shape[1]
+    P1X = P1[0]
+    P1Y = P1[1]
+    P2X = P2[0]
+    P2Y = P2[1]
+
+    #difference and absolute difference between points
+    #used to calculate slope and relative location between points
+    dX = P2X - P1X
+    dY = P2Y - P1Y
+    dXa = np.abs(dX)
+    dYa = np.abs(dY)
+
+    #predefine numpy array for output based on distance between points
+    itbuffer = np.empty(shape=(np.maximum(dYa,dXa),3),dtype=np.float32)
+    itbuffer.fill(np.nan)
+
+    #Obtain coordinates along the line using a form of Bresenham's algorithm
+    negY = P1Y > P2Y
+    negX = P1X > P2X
+    if P1X == P2X: #vertical line segment
+        itbuffer[:,0] = P1X
+        if negY:
+            itbuffer[:,1] = np.arange(P1Y - 1,P1Y - dYa - 1,-1)
+        else:
+            itbuffer[:,1] = np.arange(P1Y+1,P1Y+dYa+1)              
+    elif P1Y == P2Y: #horizontal line segment
+        itbuffer[:,1] = P1Y
+        if negX:
+            itbuffer[:,0] = np.arange(P1X-1,P1X-dXa-1,-1)
+        else:
+            itbuffer[:,0] = np.arange(P1X+1,P1X+dXa+1)
+    else: #diagonal line segment
+        steepSlope = dYa > dXa
+        if steepSlope:
+            slope = dX.astype(np.float32)/dY.astype(np.float32)
+            if negY:
+                itbuffer[:,1] = np.arange(P1Y-1,P1Y-dYa-1,-1)
+            else:
+                itbuffer[:,1] = np.arange(P1Y+1,P1Y+dYa+1)
+            itbuffer[:,0] = (slope*(itbuffer[:,1]-P1Y)).astype(int) + P1X
+        else:
+            slope = dY.astype(np.float32)/dX.astype(np.float32)
+            if negX:
+                itbuffer[:,0] = np.arange(P1X-1,P1X-dXa-1,-1)
+            else:
+                itbuffer[:,0] = np.arange(P1X+1,P1X+dXa+1)
+            itbuffer[:,1] = (slope*(itbuffer[:,0]-P1X)).astype(int) + P1Y
+
+    #Remove points outside of image
+    colX = itbuffer[:,0]
+    colY = itbuffer[:,1]
+    itbuffer = itbuffer[(colX >= 0) & (colY >=0) & (colX<imageW) & (colY<imageH)]
+
+    #Get intensities from img ndarray
+    itbuffer[:,2] = img[itbuffer[:,1].astype(np.uint),itbuffer[:,0].astype(np.uint)]
+
+    return itbuffer
+
+
 def getAngle(a, b, c):
     ba = a - b
     bc = c - b
@@ -132,6 +182,26 @@ def getAngle(a, b, c):
     angle = np.arccos(cosine_angle)
 
     return np.round(np.degrees(angle))
+
+
+def coloreABinario(line, pos):
+    if(line[pos][2]==255):
+        return "0"
+    else:
+        return "1"
+
+def numeraMark(image, pointA, pointB):
+    img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    ret, img_gray = cv2.threshold(img_gray, 200, 255, cv2.THRESH_BINARY)
+    #cv2.imshow("bn", img_gray)
+    line = createLineIterator(np.array(pointA), np.array(pointB), img_gray)
+    center1 = int(0.19*len(line))
+    center2 = int(0.34*len(line))
+    center3 = int(0.5*len(line))
+    center4 = int(0.67*len(line))
+    center5 = int(0.83*len(line))
+    num = coloreABinario(line,center1) + coloreABinario(line,center2) + coloreABinario(line,center3) + coloreABinario(line,center4) + coloreABinario(line,center5)   
+    return int(num,2)
 
 def poseEstimation(image):
     image_copy = image.copy()
@@ -148,12 +218,10 @@ def poseEstimation(image):
         if len(approx_c) == 5:
             convex = concave = 0
             for i in range(5):
-                #x, y = approx_c[i][0]
                 angle = getAngle(center, np.array(approx_c[i%5]), np.array(approx_c[(i+1)%5])) + getAngle(np.array(approx_c[(i-1)%5]), np.array(approx_c[i%5]), center)
-                #cv2.putText(image_copy, str(angle), (x, y), cv2.FONT_HERSHEY_COMPLEX, 0.5, 0, 1)
                 if angle < 180:
                     convex += 1
-                elif angle >180:
+                else:
                     indexC = i
                     concave +=1
             if convex == 4 and concave==1:
@@ -161,69 +229,40 @@ def poseEstimation(image):
                 approxContorni.append([approx_c, indexC])
 
     avg_area = area/len(approxContorni)
-    approxContorni = list(c for c in approxContorni if cv2.contourArea(c[0])>avg_area/3)
+    approxContorni = list(c for c in approxContorni if cv2.contourArea(c[0])>avg_area/1.7)
     marksCont = tuple(c[0] for c in approxContorni)
     indexConcave = tuple(c[1] for c in approxContorni)
 
     cv2.drawContours(image=image_copy, contours=marksCont, contourIdx=-1, color=(0, 255, 0), thickness=2, lineType=cv2.LINE_AA)
+    
     for c,cont in enumerate(marksCont):
-        for i in range(5):
+        
+        #traccio una linea
+        x1, y1 = cont[(indexConcave[c]+2)%5][0]
+        x2, y2 = cont[(indexConcave[c]+3)%5][0]    
+        midX = int((x1 + x2) / 2)
+        midY = int((y1 + y2) / 2)
+        pointA = (midX, midY)
+        cx, cy = cont[indexConcave[c]][0]
+        pointB = (cx, cy)
+        num = numeraMark(image_copy, pointA, pointB)
+        x, y = cont[(indexConcave[c]+2)%5][0]
+        cv2.putText(image_copy, str(num), (x, y), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0, 0, 255), 1)
+        #image_copy = cv2.line(image_copy, pointA, pointB, color=(255, 255, 0), thickness=2)
+        
+        #enumero i vertici
+        """ for i in range(5):
             x, y = cont[(i+indexConcave[c])%5][0]
             cv2.putText(image_copy, str(i), (x, y), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0, 0, 255), 1)
+     """
 
-    
     # Display
     cv2.imshow("borders", image_copy)
 
-def matchMarker(image, marker):
-
-    image = image[:,1020:1800]
-    image = cv2.rotate(image, cv2.cv2.ROTATE_90_CLOCKWISE)
-
-    result = trasformaProspettiva(image)
-    contorniDisco = estraiContorni(result)
-    contornoMarker = estraiContorni(marker)[1]
-    contorniOk = ()
-    for cont in contorniDisco:
-        ret = cv2.matchShapes(cont,contornoMarker,1,0.0)
-        if ret < 0.2:
-            contorniOk = contorniOk + (cont,)
-    #cv2.imshow('result', result)
-    cv2.drawContours(image=result, contours=contorniOk, contourIdx=-1, color=(0, 255, 0), thickness=2, lineType=cv2.LINE_AA)
-    # Display
-    cv2.imshow("original", image)
-    cv2.imshow("borders", result)
-
-def featureMatcher(image, mark):
-    image = image[:,1020:1800]
-    image = cv2.rotate(image, cv2.cv2.ROTATE_90_CLOCKWISE)
-
-    image = trasformaProspettiva(image)
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    mark = cv2.cvtColor(mark, cv2.COLOR_BGR2GRAY)
-    #ret, image = cv2.threshold(image, 150, 255, cv2.THRESH_BINARY)
-    # Initiate SIFT detector
-    sift = cv2.SIFT_create()
-    # find the keypoints and descriptors with SIFT
-    kp1, des1 = sift.detectAndCompute(image,None)
-    kp2, des2 = sift.detectAndCompute(mark,None)
-    # BFMatcher with default params
-    bf = cv2.BFMatcher()
-    matches = bf.knnMatch(des1,des2,k=2)
-    # Apply ratio test
-    good = []
-    for m,n in matches:
-        if m.distance < 0.75*n.distance:
-            good.append([m])
-    # cv.drawMatchesKnn expects list of lists as matches.
-    img3 = cv2.drawMatchesKnn(image,kp1,mark,kp2,good,None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
-    cv2.imshow("result",img3)
-    #,plt.show()
 
 vidcap = cv2.VideoCapture('data\obj01.mp4')
 #ret, image = vidcap.read()
-marker = cv2.imread("mark3.png")
-#featureMatcher(image,marker)
+#test = cv2.imread("test.png") #mark con numero 9
 #poseEstimation(image)
 
 with open('mtx.pkl', 'rb') as f:
