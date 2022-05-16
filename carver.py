@@ -4,13 +4,6 @@ import glob
 import pickle
 import matplotlib.pyplot as plt
 
-def draw(img, corners, imgpts):
-    corner = tuple(corners[0].ravel())
-    img = cv2.line(img, corner, tuple(imgpts[0].ravel()), (255,0,0), 10)
-    img = cv2.line(img, corner, tuple(imgpts[1].ravel()), (0,255,0), 10)
-    img = cv2.line(img, corner, tuple(imgpts[2].ravel()), (0,0,255), 10)
-    return img
-
 def drawBoxes(img, corners, imgpts):
 
     imgpts = np.int32(imgpts).reshape(-1,2)
@@ -26,29 +19,6 @@ def drawBoxes(img, corners, imgpts):
     img = cv2.drawContours(img, [imgpts[4:]],-1,(0,0,255),3)
 
     return img
-
-
-def estimatePose(image, mtx, dist):
-
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-    objp = np.zeros((24*17,3), np.float32)
-    objp[:,:2] = np.mgrid[0:24,0:17].T.reshape(-1,2)
-    axis = np.float32([[3,0,0], [0,3,0], [0,0,-3]]).reshape(-1,3)
-    axisBoxes = np.float32([[0,0,0], [0,3,0], [3,3,0], [3,0,0],
-                    [0,0,-3],[0,3,-3],[3,3,-3],[3,0,-3] ])
-    
-    gray = cv2.cvtColor(image,cv2.COLOR_BGR2GRAY)
-    pts = np.float32([[0,0], [0,50],
-                      [50,0], [50,50]])
-    #ret, corners = cv2.findChessboardCorners(gray, (24,17),None)
-    
-    #corners2 = cv2.cornerSubPix(gray,corners, (11,11), (-1,-1), criteria)
-    ret, rvecs, tvecs = cv2.solvePnP(objp, pts, mtx, dist)
-    imgpts, jac = cv2.projectPoints(axisBoxes, rvecs, tvecs, mtx, dist)
-
-    img = drawBoxes(image, pts, imgpts)
-    cv2.imshow('img',img)
-    return
 
 def estraiSilhouette(image):
     image = image[240:850,420:930]
@@ -75,23 +45,6 @@ def estraiSilhouette(image):
 
 
 
-def carving(image):
-    image = image[140:950,320:1030]
-    image = cv2.rotate(image, cv2.cv2.ROTATE_90_CLOCKWISE)
-    start_point = (100, 50)
-    end_point = (730, 680)
-    ticks = 2
-    w = end_point[0] - start_point[0]
-    #h = end_point[1] - start_point[1]
-    step = round(w/ticks)
-    color = (0, 0, 255)
-    thickness = 1
-    for i in range(ticks):
-        for j in range(ticks):
-            start = (start_point[0]+i*step, start_point[1]+j*step)
-            end = (start_point[0]+(i+1)*step, start_point[1]+(j+1)*step)
-            image = cv2.rectangle(image, start, end, color, thickness)
-    cv2.imshow('box', image) 
 
 def estraiContorni(image):
     img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -102,6 +55,7 @@ def estraiContorni(image):
 def createLineIterator(P1, P2, img):
     """
     Iterator implementation found on the web
+    
     Produces and array that consists of the coordinates and intensities of each pixel in a line between two points
 
     Parameters:
@@ -190,10 +144,7 @@ def coloreABinario(line, pos):
         return "1"
 
 def numeraMark(image, pointA, pointB):
-    img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    ret, img_gray = cv2.threshold(img_gray, 200, 255, cv2.THRESH_BINARY)
-    #cv2.imshow("bn", img_gray)
-    line = createLineIterator(np.array(pointA), np.array(pointB), img_gray)
+    line = createLineIterator(np.array(pointA), np.array(pointB), image)
     center1 = int(0.19*len(line))
     center2 = int(0.34*len(line))
     center3 = int(0.5*len(line))
@@ -218,15 +169,7 @@ def nuoveCoordinateB(markNum):
     ny = np.sin(angle)*radius
     return nx, ny, 0    # z=0
 
-def poseEstimation(image):
-
-    with open('mtx.pkl', 'rb') as f:
-        mtx = pickle.load(f)
-    with open('dist.pkl', 'rb') as f:
-        dist = pickle.load(f)
-
-    image_copy = image.copy()
-    contorni = estraiContorni(image)
+def pulisciContorni(contorni):
     approxContorni = []
     area=0
     for cont in contorni:
@@ -250,17 +193,18 @@ def poseEstimation(image):
                 approxContorni.append([approx_c, indexC])
 
     avg_area = area/len(approxContorni)
-    approxContorni = list(c for c in approxContorni if cv2.contourArea(c[0])>avg_area/1.7)
+    approxContorni = list(c for c in approxContorni if cv2.contourArea(c[0])>avg_area)      #era > avg_area/1.7 ma "sfarfallava" a volte
     marksCont = tuple(c[0] for c in approxContorni)
     indexConcave = tuple(c[1] for c in approxContorni)
 
-    cv2.drawContours(image=image_copy, contours=marksCont, contourIdx=-1, color=(0, 255, 0), thickness=2, lineType=cv2.LINE_AA)
-    
+    return indexConcave, marksCont
+
+def estraiPunti(marksCont, indexConcave, image):
+    img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    ret, image_bn = cv2.threshold(img_gray, 200, 255, cv2.THRESH_BINARY)
     objPoints = np.zeros((len(marksCont),3), np.float32)
     imgPoints = np.empty((len(marksCont),2), np.float32)
-
-    for c,cont in enumerate(marksCont):
-        
+    for c,cont in enumerate(marksCont):    
         #traccio una linea
         x1, y1 = cont[(indexConcave[c]+2)%5][0]
         x2, y2 = cont[(indexConcave[c]+3)%5][0]    
@@ -269,31 +213,32 @@ def poseEstimation(image):
         pointA = (midX, midY)
         cx, cy = cont[indexConcave[c]][0]
         pointB = (cx, cy)
-        num = numeraMark(image_copy, pointA, pointB)
+        num = numeraMark(image_bn, pointA, pointB)
         x, y = cont[(indexConcave[c]+2)%5][0]
-        cv2.putText(image_copy, str(num), (x, y), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0, 0, 255), 1)
+        cv2.putText(image, str(num), (x, y), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0, 0, 255), 1)
         ox, oy, oz = nuoveCoordinateA(num)
         objPoints[c] = np.float32([ox,oy,oz])
         imgPoints[c] = np.float32([cx, cy])
-        #image_copy = cv2.line(image_copy, pointA, pointB, color=(255, 255, 0), thickness=2)
-        
-        #enumero i vertici
-        """ for i in range(5):
-            x, y = cont[(i+indexConcave[c])%5][0]
-            cv2.putText(image_copy, str(i), (x, y), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0, 0, 255), 1)
-     """
+    return objPoints,imgPoints
 
-    # Display
-    #print(objPoints)
-    #print(imgPoints)
+def poseEstimation(image):
+
+    with open('mtx.pkl', 'rb') as f:
+        mtx = pickle.load(f)
+    with open('dist.pkl', 'rb') as f:
+        dist = pickle.load(f)
+
+    contorni = estraiContorni(image)
+    indexConcave, marksCont = pulisciContorni(contorni)
+    cv2.drawContours(image, contours=marksCont, contourIdx=-1, color=(0, 255, 0), thickness=2, lineType=cv2.LINE_AA)
+    
+    objPoints,imgPoints = estraiPunti(marksCont, indexConcave, image)
     ret, rvecs, tvecs = cv2.solvePnP(objPoints, imgPoints, mtx, dist, cv2.SOLVEPNP_IPPE)
     axisBoxes = np.float32([[0,0,0], [0,30,0], [30,30,0], [30,0,0],
                     [0,0,-30],[0,30,-30],[30,30,-30],[30,0,-30] ])
     
     imgpts, jac = cv2.projectPoints(axisBoxes, rvecs, tvecs, mtx, dist)
     img = drawBoxes(image, imgPoints, imgpts)
-    #print(rvecs)
-    #print(tvecs)
     cv2.imshow("borders", img)
 
 
