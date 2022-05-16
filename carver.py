@@ -177,7 +177,6 @@ def createLineIterator(P1, P2, img):
 def getAngle(a, b, c):
     ba = a - b
     bc = c - b
-    #print(ba)
     cosine_angle = np.dot(ba, bc.transpose()) / (np.linalg.norm(ba) * np.linalg.norm(bc))
     angle = np.arccos(cosine_angle)
 
@@ -203,7 +202,29 @@ def numeraMark(image, pointA, pointB):
     num = coloreABinario(line,center1) + coloreABinario(line,center2) + coloreABinario(line,center3) + coloreABinario(line,center4) + coloreABinario(line,center5)   
     return int(num,2)
 
+def nuoveCoordinateA(markNum):
+    shift = 15
+    radius = 70
+    angle = np.radians(shift*markNum)
+    nx = np.cos(angle)*radius 
+    ny = np.sin(angle)*radius
+    return nx, ny, 0    # z=0
+
+def nuoveCoordinateB(markNum):
+    shift = 15
+    radius = np.sqrt(65*65 + 5*5)
+    angle = np.radians(shift*markNum)
+    nx = np.cos(angle)*radius 
+    ny = np.sin(angle)*radius
+    return nx, ny, 0    # z=0
+
 def poseEstimation(image):
+
+    with open('mtx.pkl', 'rb') as f:
+        mtx = pickle.load(f)
+    with open('dist.pkl', 'rb') as f:
+        dist = pickle.load(f)
+
     image_copy = image.copy()
     contorni = estraiContorni(image)
     approxContorni = []
@@ -235,6 +256,9 @@ def poseEstimation(image):
 
     cv2.drawContours(image=image_copy, contours=marksCont, contourIdx=-1, color=(0, 255, 0), thickness=2, lineType=cv2.LINE_AA)
     
+    objPoints = np.zeros((len(marksCont),3), np.float32)
+    imgPoints = np.empty((len(marksCont),2), np.float32)
+
     for c,cont in enumerate(marksCont):
         
         #traccio una linea
@@ -248,6 +272,9 @@ def poseEstimation(image):
         num = numeraMark(image_copy, pointA, pointB)
         x, y = cont[(indexConcave[c]+2)%5][0]
         cv2.putText(image_copy, str(num), (x, y), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0, 0, 255), 1)
+        ox, oy, oz = nuoveCoordinateA(num)
+        objPoints[c] = np.float32([ox,oy,oz])
+        imgPoints[c] = np.float32([cx, cy])
         #image_copy = cv2.line(image_copy, pointA, pointB, color=(255, 255, 0), thickness=2)
         
         #enumero i vertici
@@ -257,7 +284,17 @@ def poseEstimation(image):
      """
 
     # Display
-    cv2.imshow("borders", image_copy)
+    #print(objPoints)
+    #print(imgPoints)
+    ret, rvecs, tvecs = cv2.solvePnP(objPoints, imgPoints, mtx, dist, cv2.SOLVEPNP_IPPE)
+    axisBoxes = np.float32([[0,0,0], [0,30,0], [30,30,0], [30,0,0],
+                    [0,0,-30],[0,30,-30],[30,30,-30],[30,0,-30] ])
+    
+    imgpts, jac = cv2.projectPoints(axisBoxes, rvecs, tvecs, mtx, dist)
+    img = drawBoxes(image, imgPoints, imgpts)
+    #print(rvecs)
+    #print(tvecs)
+    cv2.imshow("borders", img)
 
 
 vidcap = cv2.VideoCapture('data\obj01.mp4')
@@ -265,10 +302,7 @@ vidcap = cv2.VideoCapture('data\obj01.mp4')
 #test = cv2.imread("test.png") #mark con numero 9
 #poseEstimation(image)
 
-with open('mtx.pkl', 'rb') as f:
-    mtx = pickle.load(f)
-with open('dist.pkl', 'rb') as f:
-    dist = pickle.load(f)
+
 #estraiContorni(marker)
 #matchMarker(image, marker)
 while True:    
