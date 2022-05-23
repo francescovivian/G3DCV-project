@@ -21,8 +21,8 @@ def drawBoxes(img, corners, imgpts):
     return img
 
 def estraiSilhouette(image):
-    image = image[240:850,420:930]
-    image = cv2.rotate(image, cv2.cv2.ROTATE_90_CLOCKWISE)
+    #image = image[240:850,420:930]
+    #image = cv2.rotate(image, cv2.cv2.ROTATE_90_CLOCKWISE)
 
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
@@ -39,8 +39,9 @@ def estraiSilhouette(image):
     res = 255 - cv2.bitwise_and(dlt, msk)
 
     # Display
-    cv2.imshow("original", image)
-    cv2.imshow("res", res)
+    #cv2.imshow("original", image)
+    #cv2.imshow("res", res)
+    return res
 
 
 
@@ -55,7 +56,7 @@ def estraiContorni(image):
 def createLineIterator(P1, P2, img):
     """
     Iterator implementation found on the web
-    
+
     Produces and array that consists of the coordinates and intensities of each pixel in a line between two points
 
     Parameters:
@@ -154,7 +155,7 @@ def numeraMark(image, pointA, pointB):
     return int(num,2)
 
 def nuoveCoordinateA(markNum):
-    shift = 15
+    shift = -15
     radius = 70
     angle = np.radians(shift*markNum)
     nx = np.cos(angle)*radius 
@@ -162,7 +163,7 @@ def nuoveCoordinateA(markNum):
     return nx, ny, 0    # z=0
 
 def nuoveCoordinateB(markNum):
-    shift = 15
+    shift = -15
     radius = np.sqrt(65*65 + 5*5)
     angle = np.radians(shift*markNum)
     nx = np.cos(angle)*radius 
@@ -179,6 +180,7 @@ def pulisciContorni(contorni):
             cy = int(M['m01']/M['m00'])
             center = np.array([cx,cy])
         approx_c = cv2.approxPolyDP(cont,5,True)
+        #approx_c = cv2.approxPolyDP(cont, 0.01 * cv2.arcLength(cont, True), True)
         if len(approx_c) == 5:
             convex = concave = 0
             for i in range(5):
@@ -203,7 +205,7 @@ def estraiPunti(marksCont, indexConcave, image):
     img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     ret, image_bn = cv2.threshold(img_gray, 200, 255, cv2.THRESH_BINARY)
     objPoints = np.zeros((len(marksCont),3), np.float32)
-    imgPoints = np.empty((len(marksCont),2), np.float32)
+    imgPoints = np.zeros((len(marksCont),2), np.float32)
     for c,cont in enumerate(marksCont):    
         #traccio una linea
         x1, y1 = cont[(indexConcave[c]+2)%5][0]
@@ -221,35 +223,106 @@ def estraiPunti(marksCont, indexConcave, image):
         imgPoints[c] = np.float32([cx, cy])
     return objPoints,imgPoints
 
-def poseEstimation(image):
+def calcolaRMS(predictions, targets):
+    xErr = np.sqrt(np.mean((predictions[0]-targets[0])**2))
+    yErr = np.sqrt(np.mean((predictions[1]-targets[1])**2))
+    return xErr, yErr
 
-    with open('mtx.pkl', 'rb') as f:
-        mtx = pickle.load(f)
-    with open('dist.pkl', 'rb') as f:
-        dist = pickle.load(f)
+def poseEstimation(image, mtx, dist):
+
 
     contorni = estraiContorni(image)
     indexConcave, marksCont = pulisciContorni(contorni)
     cv2.drawContours(image, contours=marksCont, contourIdx=-1, color=(0, 255, 0), thickness=2, lineType=cv2.LINE_AA)
     
     objPoints,imgPoints = estraiPunti(marksCont, indexConcave, image)
+    #print("Punti usati: " + str(len(objPoints)))
     ret, rvecs, tvecs = cv2.solvePnP(objPoints, imgPoints, mtx, dist, cv2.SOLVEPNP_IPPE)
-    axisBoxes = np.float32([[0,0,0], [0,30,0], [30,30,0], [30,0,0],
-                    [0,0,-30],[0,30,-30],[30,30,-30],[30,0,-30] ])
+
+    cs = 60
+    up = 80
+    axisBoxes = np.float32([[-cs,-cs,cs*2+up], [+cs,-cs,cs*2+up], [+cs,+cs,cs*2+up], [-cs,+cs,cs*2+up],
+                                [-cs,-cs,up],    [+cs,-cs,up],    [+cs,+cs,up],    [-cs,+cs,up]])
     
     imgpts, jac = cv2.projectPoints(axisBoxes, rvecs, tvecs, mtx, dist)
-    img = drawBoxes(image, imgPoints, imgpts)
-    cv2.imshow("borders", img)
+    """ projImgPts, jac = cv2.projectPoints(objPoints, rvecs, tvecs, mtx, dist)
+    xErr, yErr = calcolaRMS(projImgPts, imgPoints)
+    if xErr>1 or yErr>1:
+        print("RMS maggiore di 1! (" + str(xErr) + ", " + str(yErr) + ")") """
+    #img = drawBoxes(image, imgPoints, imgpts)
+    #cv2.imshow("borders", img)
+    return rvecs, tvecs
+
+def getVoxelsCenters(nVoxels, side, topLeft):
+    centers = np.zeros((nVoxels**3,3), np.float32)
+    shift = side/nVoxels
+    for i in range(nVoxels):
+        for j in range(nVoxels):
+            for k in range(nVoxels):
+                index = i*nVoxels**2 + j*nVoxels + k
+                cx = int(topLeft[0] - i*shift - shift/2)
+                cy = int(topLeft[1] + k*shift + shift/2)
+                cz = int(topLeft[2] - j*shift - shift/2)
+                centers[index] = np.float32([cx,cy,cz])
+    #print(centers)
+    return centers
+                
+
+def carve(image, nVox, voxelCenters, voxels, mtx, dist):
+    print("Carving")
+    rvecs, tvecs = poseEstimation(image, mtx, dist)
+    sil = estraiSilhouette(image)
+    imgPts, jac = cv2.projectPoints(voxelCenters, rvecs, tvecs, mtx, dist)
+    #print(sil[0][0])
+    for p, point in enumerate(imgPts):
+        #print(point[0][1])
+        if sil[int(point[0][0])][int(point[0][1])] == 0:    #nero
+            i = int(p/(nVox**2))
+            j = int((p%(nVox**2))/nVox)
+            k = int((p%(nVox**2))%nVox)
+            voxels[j][k][i] = False
+    return voxels
+
+    
+def saveToPLY(name, voxels, voxelCenters, nvox):
+    nPoints = voxels.sum()
+    f = open(name, "w")
+    f.write("ply\n")
+    f.write("format ascii 1.0\n")
+    f.write("element vertex " + str(nPoints) +"\n")
+    f.write("property float x\n")
+    f.write("property float y\n")
+    f.write("property float z\n")
+    f.write("end_header\n")
+    for ind, vc in enumerate(voxelCenters):
+        i = int(ind/(nVox**2))
+        j = int((ind%(nVox**2))/nVox)
+        k = int((ind%(nVox**2))%nVox)
+        if voxels[j][k][i] == True:
+            f.write(str(vc[0]) + " " + str(vc[1]) + " " + str(vc[2]) + "\n")
+    f.close()
 
 
 vidcap = cv2.VideoCapture('data\obj01.mp4')
-#ret, image = vidcap.read()
+ret, image = vidcap.read()
 #test = cv2.imread("test.png") #mark con numero 9
 #poseEstimation(image)
 
+with open('mtx.pkl', 'rb') as f:
+    mtx = pickle.load(f)
+with open('dist.pkl', 'rb') as f:
+    dist = pickle.load(f)
 
-#estraiContorni(marker)
-#matchMarker(image, marker)
+nVox = 10
+side = 60 
+up = 80
+voxels = np.full((nVox, nVox, nVox), True)
+cubeTopLeftCorner = np.float32([-side,-side, side*2+up]) #coordinate angolo in alto a sinistra del cubo grande
+voxelCenters = getVoxelsCenters(nVox, side=12, topLeft=cubeTopLeftCorner)
+#carve(image, nVox, voxelCenters, voxels, mtx, dist)
+
+#print(voxels)
+
 while True:    
     ret, image = vidcap.read()
     if not ret:
@@ -260,13 +333,16 @@ while True:
     #carving(image)
     #matchMarker(image, marker)
     #featureMatcher(image,marker)
-    poseEstimation(image)
-    k = cv2.waitKey(1) & 0xff    
+    #poseEstimation(image)
+    voxels = carve(image, nVox, voxelCenters, voxels, mtx, dist)
+    
+    """ k = cv2.waitKey(1) & 0xff    
     # Check if 'q' key is pressed.
     if k == ord('q'):
-        break
+        break """
 
 # Release the VideoCapture Object.
+print("Fine Carving")
 vidcap.release()
-
+saveToPLY("test.ply", voxels, voxelCenters, nVox)
 cv2.destroyAllWindows()
