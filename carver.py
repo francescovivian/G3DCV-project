@@ -269,9 +269,12 @@ def carve(image, nVox, voxelCenters, voxels, mtx, dist):
     sil = estraiSilhouette(image)
     imgPts, jac = cv2.projectPoints(voxelCenters, rvecs, tvecs, mtx, dist)
     for p, point in enumerate(imgPts):
-        if sil[int(point[0][0])][int(point[0][1])] == 0:    #nero
+        x = int(point[0][0])
+        y = int(point[0][1])
+        if x >= 1080 or y >= 1920 or sil[y][x] == 0:    #nero
             voxels[p] = False
-        cv2.drawMarker(image, (int(point[0][0]), int(point[0][1])),(0,0,255), markerType=cv2.MARKER_STAR, markerSize=10, thickness=1, line_type=cv2.LINE_AA)
+        if voxels[p] ==  True:
+            cv2.drawMarker(image, (x, y),(0,0,255), markerType=cv2.MARKER_CROSS, markerSize=10, thickness=1, line_type=cv2.LINE_AA)
     cv2.imshow("borders", image)
     #print("Voxel rimanenti: " + str(voxels.sum()))
     return voxels
@@ -279,7 +282,8 @@ def carve(image, nVox, voxelCenters, voxels, mtx, dist):
     
 def saveToPLY(name, voxels, voxelCenters, nvox):
     nPoints = voxels.sum()
-    f = open(name, "w")
+    fullName = "results" + name + ".ply"
+    f = open(fullName, "w")
     f.write("ply\n")
     f.write("format ascii 1.0\n")
     f.write("element vertex " + str(nPoints) +"\n")
@@ -292,8 +296,8 @@ def saveToPLY(name, voxels, voxelCenters, nvox):
             f.write(str(vc[0]) + " " + str(vc[1]) + " " + str(vc[2]) + "\n")
     f.close()
 
-
-vidcap = cv2.VideoCapture('data\obj01.mp4')
+nomeFile = "\obj01"
+vidcap = cv2.VideoCapture("data" + nomeFile + ".mp4")
 ret, image = vidcap.read()
 
 with open('mtx.pkl', 'rb') as f:
@@ -301,9 +305,9 @@ with open('mtx.pkl', 'rb') as f:
 with open('dist.pkl', 'rb') as f:
     dist = pickle.load(f)
 
-nVox = 10
-side = 60 
-up = 50
+nVox = 50
+side = 60
+up = 80
 voxels = np.full((nVox**3), True)
 cubeTopLeftCorner = np.float32([+side,-side, side*2+up]) #coordinate angolo in alto a sinistra del cubo grande
 voxelCenters = getVoxelsCenters(nVox, side, cubeTopLeftCorner)
@@ -311,6 +315,8 @@ voxelCenters = getVoxelsCenters(nVox, side, cubeTopLeftCorner)
 frameCounter = 0
 while True:    
     ret, image = vidcap.read()
+    if frameCounter == 0:
+        print(image.shape)
     frameCounter += 1
     if not ret:
         break
@@ -325,5 +331,5 @@ while True:
 # Release the VideoCapture Object.
 print("Fine Carving")
 vidcap.release()
-saveToPLY("test.ply", voxels, voxelCenters, nVox)
+saveToPLY(nomeFile, voxels, voxelCenters, nVox)
 cv2.destroyAllWindows()
