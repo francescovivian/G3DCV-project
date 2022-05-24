@@ -43,10 +43,6 @@ def estraiSilhouette(image):
     #cv2.imshow("res", res)
     return res
 
-
-
-
-
 def estraiContorni(image):
     img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     ret, thresh = cv2.threshold(img_gray, 150, 255, cv2.THRESH_BINARY)
@@ -255,32 +251,29 @@ def poseEstimation(image, mtx, dist):
 
 def getVoxelsCenters(nVoxels, side, topLeft):
     centers = np.zeros((nVoxels**3,3), np.float32)
-    shift = side/nVoxels
+    shift = side*2/nVoxels
     for i in range(nVoxels):
         for j in range(nVoxels):
             for k in range(nVoxels):
                 index = i*nVoxels**2 + j*nVoxels + k
-                cx = int(topLeft[0] - i*shift - shift/2)
-                cy = int(topLeft[1] + k*shift + shift/2)
-                cz = int(topLeft[2] - j*shift - shift/2)
+                cx = topLeft[0] - i*shift - shift/2
+                cy = topLeft[1] + k*shift + shift/2
+                cz = topLeft[2] - j*shift - shift/2
                 centers[index] = np.float32([cx,cy,cz])
     #print(centers)
     return centers
                 
 
 def carve(image, nVox, voxelCenters, voxels, mtx, dist):
-    print("Carving")
     rvecs, tvecs = poseEstimation(image, mtx, dist)
     sil = estraiSilhouette(image)
     imgPts, jac = cv2.projectPoints(voxelCenters, rvecs, tvecs, mtx, dist)
-    #print(sil[0][0])
     for p, point in enumerate(imgPts):
-        #print(point[0][1])
         if sil[int(point[0][0])][int(point[0][1])] == 0:    #nero
-            i = int(p/(nVox**2))
-            j = int((p%(nVox**2))/nVox)
-            k = int((p%(nVox**2))%nVox)
-            voxels[j][k][i] = False
+            voxels[p] = False
+        cv2.drawMarker(image, (int(point[0][0]), int(point[0][1])),(0,0,255), markerType=cv2.MARKER_STAR, markerSize=10, thickness=1, line_type=cv2.LINE_AA)
+    cv2.imshow("borders", image)
+    #print("Voxel rimanenti: " + str(voxels.sum()))
     return voxels
 
     
@@ -295,18 +288,13 @@ def saveToPLY(name, voxels, voxelCenters, nvox):
     f.write("property float z\n")
     f.write("end_header\n")
     for ind, vc in enumerate(voxelCenters):
-        i = int(ind/(nVox**2))
-        j = int((ind%(nVox**2))/nVox)
-        k = int((ind%(nVox**2))%nVox)
-        if voxels[j][k][i] == True:
+        if voxels[ind] == True:
             f.write(str(vc[0]) + " " + str(vc[1]) + " " + str(vc[2]) + "\n")
     f.close()
 
 
 vidcap = cv2.VideoCapture('data\obj01.mp4')
 ret, image = vidcap.read()
-#test = cv2.imread("test.png") #mark con numero 9
-#poseEstimation(image)
 
 with open('mtx.pkl', 'rb') as f:
     mtx = pickle.load(f)
@@ -315,31 +303,24 @@ with open('dist.pkl', 'rb') as f:
 
 nVox = 10
 side = 60 
-up = 80
-voxels = np.full((nVox, nVox, nVox), True)
-cubeTopLeftCorner = np.float32([-side,-side, side*2+up]) #coordinate angolo in alto a sinistra del cubo grande
-voxelCenters = getVoxelsCenters(nVox, side=12, topLeft=cubeTopLeftCorner)
+up = 50
+voxels = np.full((nVox**3), True)
+cubeTopLeftCorner = np.float32([+side,-side, side*2+up]) #coordinate angolo in alto a sinistra del cubo grande
+voxelCenters = getVoxelsCenters(nVox, side, cubeTopLeftCorner)
 #carve(image, nVox, voxelCenters, voxels, mtx, dist)
-
-#print(voxels)
-
+frameCounter = 0
 while True:    
     ret, image = vidcap.read()
+    frameCounter += 1
     if not ret:
         break
-    #estraiSilhouette(image)
-    #disegnaBordiDisco(image)
-    #estimatePose(image,mtx,dist)
-    #carving(image)
-    #matchMarker(image, marker)
-    #featureMatcher(image,marker)
-    #poseEstimation(image)
-    voxels = carve(image, nVox, voxelCenters, voxels, mtx, dist)
     
-    """ k = cv2.waitKey(1) & 0xff    
+    if frameCounter%10 == 0:
+        voxels = carve(image, nVox, voxelCenters, voxels, mtx, dist)
+    k = cv2.waitKey(1) & 0xff    
     # Check if 'q' key is pressed.
     if k == ord('q'):
-        break """
+        break
 
 # Release the VideoCapture Object.
 print("Fine Carving")
