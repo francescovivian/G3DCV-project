@@ -20,7 +20,7 @@ def drawBoxes(img, corners, imgpts):
 
     return img
 
-def estraiSilhouette(image):
+def estraiSilhouetteVecchio(image):
     #image = image[240:850,420:930]
     #image = cv2.rotate(image, cv2.cv2.ROTATE_90_CLOCKWISE)
 
@@ -35,6 +35,29 @@ def estraiSilhouette(image):
     krn = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 3))
     dlt = cv2.dilate(msk, krn, iterations = 1)
     dlt = cv2.erode(dlt, krn, iterations = 10)
+
+    res = 255 - cv2.bitwise_and(dlt, msk)
+
+    # Display
+    cv2.imshow("original", image)
+    cv2.imshow("res", res)
+    return res
+
+def estraiSilhouette(image):
+    imgCopy = image.copy()
+    imgCopy[:, :, 0] = 0
+    hsv = cv2.cvtColor(imgCopy, cv2.COLOR_BGR2HSV)
+
+    # Perform color-segmentation to get the binary mask
+    lwr = np.array([0, 0, 0])
+    upr = np.array([179, 255, 146])
+    msk = cv2.inRange(hsv, lwr, upr)
+
+    # Extracting the rod using binary-mask
+    krn = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 3))
+    dlt = cv2.erode(msk, krn, iterations = 3)
+    dlt = cv2.dilate(dlt, krn, iterations = 2)
+
 
     res = 255 - cv2.bitwise_and(dlt, msk)
 
@@ -260,7 +283,6 @@ def getVoxelsCenters(nVoxels, side, topLeft):
                 cy = topLeft[1] + k*shift + shift/2
                 cz = topLeft[2] - j*shift - shift/2
                 centers[index] = np.float32([cx,cy,cz])
-    #print(centers)
     return centers
                 
 
@@ -271,7 +293,7 @@ def carve(image, nVox, voxelCenters, voxels, mtx, dist):
     for p, point in enumerate(imgPts):
         x = int(point[0][0])
         y = int(point[0][1])
-        if x >= 1080 or y >= 1920 or sil[y][x] == 0:    #nero
+        if sil[y][x] == 0:    #nero
             voxels[p] = False
         if voxels[p] ==  True:
             cv2.drawMarker(image, (x, y),(0,0,255), markerType=cv2.MARKER_CROSS, markerSize=10, thickness=1, line_type=cv2.LINE_AA)
@@ -298,7 +320,7 @@ def saveToPLY(name, voxels, voxelCenters, nvox):
 
 nomeFile = "\obj01"
 vidcap = cv2.VideoCapture("data" + nomeFile + ".mp4")
-ret, image = vidcap.read()
+#ret, image = vidcap.read()
 
 with open('mtx.pkl', 'rb') as f:
     mtx = pickle.load(f)
@@ -309,20 +331,19 @@ nVox = 50
 side = 60
 up = 80
 voxels = np.full((nVox**3), True)
-cubeTopLeftCorner = np.float32([+side,-side, side*2+up]) #coordinate angolo in alto a sinistra del cubo grande
+cubeTopLeftCorner = np.float32([+side,-side, side*2+up]) #coordinate angolo in alto a sinistra del cubo grande (facciata frontale)
 voxelCenters = getVoxelsCenters(nVox, side, cubeTopLeftCorner)
 #carve(image, nVox, voxelCenters, voxels, mtx, dist)
 frameCounter = 0
 while True:    
     ret, image = vidcap.read()
-    if frameCounter == 0:
-        print(image.shape)
     frameCounter += 1
     if not ret:
         break
     
     if frameCounter%10 == 0:
         voxels = carve(image, nVox, voxelCenters, voxels, mtx, dist)
+        #estraiSilhouette(image)
     k = cv2.waitKey(1) & 0xff    
     # Check if 'q' key is pressed.
     if k == ord('q'):
