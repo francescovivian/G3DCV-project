@@ -21,8 +21,6 @@ def drawBoxes(img, corners, imgpts):
     return img
 
 def estraiSilhouetteVecchio(image):
-    #image = image[240:850,420:930]
-    #image = cv2.rotate(image, cv2.cv2.ROTATE_90_CLOCKWISE)
 
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
@@ -44,9 +42,8 @@ def estraiSilhouetteVecchio(image):
     return res
 
 def estraiSilhouette(image):
-    imgCopy = image.copy()
-    imgCopy[:, :, 0] = 0
-    hsv = cv2.cvtColor(imgCopy, cv2.COLOR_BGR2HSV)
+
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
     # Perform color-segmentation to get the binary mask
     lwr = np.array([0, 0, 0])
@@ -55,9 +52,8 @@ def estraiSilhouette(image):
 
     # Extracting the rod using binary-mask
     krn = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 3))
-    dlt = cv2.erode(msk, krn, iterations = 3)
-    dlt = cv2.dilate(dlt, krn, iterations = 2)
-
+    dlt = cv2.dilate(msk, krn, iterations = 1)
+    dlt = cv2.erode(dlt, krn, iterations = 10)
 
     res = 255 - cv2.bitwise_and(dlt, msk)
 
@@ -65,6 +61,16 @@ def estraiSilhouette(image):
     #cv2.imshow("original", image)
     #cv2.imshow("res", res)
     return res
+
+def thresh(image):
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    ret,th1 = cv2.threshold(image,90,255,cv2.THRESH_BINARY)
+    ret, th2 = cv2.threshold(image,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+
+    blur = cv2.GaussianBlur(image,(5,5),0)
+    ret3,th3 = cv2.threshold(blur,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+    #cv2.imshow("original", image)
+    cv2.imshow("res", th3)
 
 def estraiContorni(image):
     img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -286,24 +292,29 @@ def getVoxelsCenters(nVoxels, side, topLeft):
     return centers
                 
 
-def carve(image, nVox, voxelCenters, voxels, mtx, dist):
+def carve(image, voxelCenters, voxels, mtx, dist, DRAW): 
     rvecs, tvecs = poseEstimation(image, mtx, dist)
     sil = estraiSilhouette(image)
+    #sil = rimuoviBG(image, grayMedianFrame)
+    #print(len(voxelCenters), flush=True)
     imgPts, jac = cv2.projectPoints(voxelCenters, rvecs, tvecs, mtx, dist)
+    #removed = 0
     for p, point in enumerate(imgPts):
         x = int(point[0][0])
         y = int(point[0][1])
         if sil[y][x] == 0:    #nero
+            #np.delete(voxelCenters, p-removed)
+            #removed += 1
             voxels[p] = False
-        if voxels[p] ==  True:
+        if  DRAW and voxels[p] ==  True:
             cv2.drawMarker(image, (x, y),(0,0,255), markerType=cv2.MARKER_CROSS, markerSize=10, thickness=1, line_type=cv2.LINE_AA)
     cv2.imshow("borders", image)
-    #print("Voxel rimanenti: " + str(voxels.sum()))
+    #return voxelCenters
     return voxels
 
     
-def saveToPLY(name, voxels, voxelCenters, nvox):
-    nPoints = voxels.sum()
+def saveToPLY(name, voxels, voxelCenters):
+    nPoints = np.sum(voxels)
     fullName = "results" + name + ".ply"
     f = open(fullName, "w")
     f.write("ply\n")
@@ -335,15 +346,20 @@ cubeTopLeftCorner = np.float32([+side,-side, side*2+up]) #coordinate angolo in a
 voxelCenters = getVoxelsCenters(nVox, side, cubeTopLeftCorner)
 #carve(image, nVox, voxelCenters, voxels, mtx, dist)
 frameCounter = 0
+
+
+vidcap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 while True:    
     ret, image = vidcap.read()
     frameCounter += 1
     if not ret:
         break
-    
+
     if frameCounter%10 == 0:
-        voxels = carve(image, nVox, voxelCenters, voxels, mtx, dist)
-        #estraiSilhouette(image)
+        #voxelCenters = carve(image, voxelCenters, voxels, mtx, dist, DRAW=False)
+        #voxels = carve(image, voxelCenters, voxels, mtx, dist, DRAW=True)
+        thresh(image)
+        #res, backSub = estraiSilhouette(image, backSub)
     k = cv2.waitKey(1) & 0xff    
     # Check if 'q' key is pressed.
     if k == ord('q'):
@@ -352,5 +368,5 @@ while True:
 # Release the VideoCapture Object.
 print("Fine Carving")
 vidcap.release()
-saveToPLY(nomeFile, voxels, voxelCenters, nVox)
+saveToPLY(nomeFile, voxels, voxelCenters)
 cv2.destroyAllWindows()
