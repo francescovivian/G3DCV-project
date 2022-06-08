@@ -31,8 +31,10 @@ def estraiSilhouetteVecchio(image):
 
     # Extracting the rod using binary-mask
     krn = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 3))
-    dlt = cv2.dilate(msk, krn, iterations = 1)
-    dlt = cv2.erode(dlt, krn, iterations = 10)
+    dlt = cv2.dilate(msk, krn, iterations = 5)
+    dlt = cv2.erode(dlt, krn, iterations = 5)
+    
+    
 
     res = 255 - cv2.bitwise_and(dlt, msk)
 
@@ -42,35 +44,21 @@ def estraiSilhouetteVecchio(image):
     return res
 
 def estraiSilhouette(image):
+    flood = image.copy()
+    seed = (0, 0)
+    seed2 = (840, 540)
+    seed3 = (960, 540)
+    cv2.floodFill(flood, None, seedPoint=seed, newVal=(0, 0, 0), loDiff=(4, 4, 4, 4), upDiff=(4, 4, 4, 4)) #sfondo
+    #cv2.floodFill(flood, None, seedPoint=seed2, newVal=(0, 0, 0), loDiff=(2, 2, 2, 2), upDiff=(2, 2, 2, 2)) #tra le gambe rinoceronte
+    cv2.floodFill(flood, None, seedPoint=seed3, newVal=(0, 0, 0), loDiff=(5, 5, 5, 5), upDiff=(5, 5, 5, 5)) #bicchiere
 
-    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-
-    # Perform color-segmentation to get the binary mask
-    lwr = np.array([0, 0, 0])
-    upr = np.array([179, 255, 146])
-    msk = cv2.inRange(hsv, lwr, upr)
-
-    # Extracting the rod using binary-mask
-    krn = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 3))
-    dlt = cv2.dilate(msk, krn, iterations = 1)
-    dlt = cv2.erode(dlt, krn, iterations = 10)
-
-    res = 255 - cv2.bitwise_and(dlt, msk)
+    #flood = cv2.circle(flood, seed2, radius=10, color=(0, 0, 255), thickness=-1)
+    res = cv2.cvtColor(flood, cv2.COLOR_BGR2GRAY)
 
     # Display
-    #cv2.imshow("original", image)
-    #cv2.imshow("res", res)
+    #cv2.imshow("test", res)
     return res
 
-def thresh(image):
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    ret,th1 = cv2.threshold(image,90,255,cv2.THRESH_BINARY)
-    ret, th2 = cv2.threshold(image,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-
-    blur = cv2.GaussianBlur(image,(5,5),0)
-    ret3,th3 = cv2.threshold(blur,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-    #cv2.imshow("original", image)
-    cv2.imshow("res", th3)
 
 def estraiContorni(image):
     img_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -329,7 +317,7 @@ def saveToPLY(name, voxels, voxelCenters):
             f.write(str(vc[0]) + " " + str(vc[1]) + " " + str(vc[2]) + "\n")
     f.close()
 
-nomeFile = "\obj01"
+nomeFile = "\obj02"
 vidcap = cv2.VideoCapture("data" + nomeFile + ".mp4")
 #ret, image = vidcap.read()
 
@@ -351,14 +339,16 @@ frameCounter = 0
 vidcap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 while True:    
     ret, image = vidcap.read()
+    if frameCounter == 0:
+        print(image.shape)
     frameCounter += 1
     if not ret:
         break
 
     if frameCounter%10 == 0:
         #voxelCenters = carve(image, voxelCenters, voxels, mtx, dist, DRAW=False)
-        #voxels = carve(image, voxelCenters, voxels, mtx, dist, DRAW=True)
-        thresh(image)
+        voxels = carve(image, voxelCenters, voxels, mtx, dist, DRAW=True)
+        #estraiSilhouette(image)
         #res, backSub = estraiSilhouette(image, backSub)
     k = cv2.waitKey(1) & 0xff    
     # Check if 'q' key is pressed.
