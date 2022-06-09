@@ -45,14 +45,17 @@ def estraiSilhouetteVecchio(image):
 
 def estraiSilhouette(image):
     flood = image.copy()
+    gs = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     seed = (0, 0)
     seed2 = (840, 540)
     seed3 = (960, 540)
+    #print(gs[540][840])
     cv2.floodFill(flood, None, seedPoint=seed, newVal=(0, 0, 0), loDiff=(4, 4, 4, 4), upDiff=(4, 4, 4, 4)) #sfondo
-    #cv2.floodFill(flood, None, seedPoint=seed2, newVal=(0, 0, 0), loDiff=(2, 2, 2, 2), upDiff=(2, 2, 2, 2)) #tra le gambe rinoceronte
-    cv2.floodFill(flood, None, seedPoint=seed3, newVal=(0, 0, 0), loDiff=(5, 5, 5, 5), upDiff=(5, 5, 5, 5)) #bicchiere
+    if (gs[540][840] < 80 and gs[540][840] > 60):
+        cv2.floodFill(flood, None, seedPoint=seed2, newVal=(0, 0, 0), loDiff=(4, 4, 4, 4), upDiff=(4, 4, 4, 4)) #tra le gambe rinoceronte
+    #cv2.floodFill(flood, None, seedPoint=seed3, newVal=(0, 0, 0), loDiff=(4, 4, 4, 4), upDiff=(4, 4, 4, 4)) #bicchiere
 
-    #flood = cv2.circle(flood, seed2, radius=10, color=(0, 0, 255), thickness=-1)
+    flood = cv2.circle(flood, seed2, radius=10, color=(0, 0, 255), thickness=-1)
     res = cv2.cvtColor(flood, cv2.COLOR_BGR2GRAY)
 
     # Display
@@ -317,7 +320,7 @@ def saveToPLY(name, voxels, voxelCenters):
             f.write(str(vc[0]) + " " + str(vc[1]) + " " + str(vc[2]) + "\n")
     f.close()
 
-nomeFile = "\obj02"
+nomeFile = "\obj04"
 vidcap = cv2.VideoCapture("data" + nomeFile + ".mp4")
 #ret, image = vidcap.read()
 
@@ -327,7 +330,7 @@ with open('dist.pkl', 'rb') as f:
     dist = pickle.load(f)
 
 nVox = 50
-side = 60
+side = 65
 up = 80
 voxels = np.full((nVox**3), True)
 cubeTopLeftCorner = np.float32([+side,-side, side*2+up]) #coordinate angolo in alto a sinistra del cubo grande (facciata frontale)
