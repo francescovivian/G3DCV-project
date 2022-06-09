@@ -1,3 +1,4 @@
+from operator import truediv
 import cv2
 import numpy as np
 import glob
@@ -283,29 +284,25 @@ def getVoxelsCenters(nVoxels, side, topLeft):
     return centers
                 
 
-def carve(image, voxelCenters, voxels, mtx, dist, DRAW): 
+def carve(image, voxelCenters, mtx, dist, DRAW):
     rvecs, tvecs = poseEstimation(image, mtx, dist)
     sil = estraiSilhouette(image)
-    #sil = rimuoviBG(image, grayMedianFrame)
-    #print(len(voxelCenters), flush=True)
     imgPts, jac = cv2.projectPoints(voxelCenters, rvecs, tvecs, mtx, dist)
-    #removed = 0
+    okPts = []
+
     for p, point in enumerate(imgPts):
         x = int(point[0][0])
         y = int(point[0][1])
-        if sil[y][x] == 0:    #nero
-            #np.delete(voxelCenters, p-removed)
-            #removed += 1
-            voxels[p] = False
-        if  DRAW and voxels[p] ==  True:
-            cv2.drawMarker(image, (x, y),(0,0,255), markerType=cv2.MARKER_CROSS, markerSize=10, thickness=1, line_type=cv2.LINE_AA)
+        if sil[y][x] != 0:    # non nero
+            okPts.append(voxelCenters[p])
+            if DRAW:
+                cv2.drawMarker(image, (x, y),(0,0,255), markerType=cv2.MARKER_CROSS, markerSize=10, thickness=1, line_type=cv2.LINE_AA)
+    okPts = np.array(okPts)
     cv2.imshow("borders", image)
-    #return voxelCenters
-    return voxels
-
+    return okPts
     
-def saveToPLY(name, voxels, voxelCenters):
-    nPoints = np.sum(voxels)
+def saveToPLY(name, voxelCenters):
+    nPoints = len(voxelCenters)
     fullName = "results" + name + ".ply"
     f = open(fullName, "w")
     f.write("ply\n")
@@ -315,12 +312,11 @@ def saveToPLY(name, voxels, voxelCenters):
     f.write("property float y\n")
     f.write("property float z\n")
     f.write("end_header\n")
-    for ind, vc in enumerate(voxelCenters):
-        if voxels[ind] == True:
-            f.write(str(vc[0]) + " " + str(vc[1]) + " " + str(vc[2]) + "\n")
+    for vc in voxelCenters:
+        f.write(str(vc[0]) + " " + str(vc[1]) + " " + str(vc[2]) + "\n")
     f.close()
 
-nomeFile = "\obj04"
+nomeFile = "\obj01"
 vidcap = cv2.VideoCapture("data" + nomeFile + ".mp4")
 #ret, image = vidcap.read()
 
@@ -332,7 +328,6 @@ with open('dist.pkl', 'rb') as f:
 nVox = 50
 side = 65
 up = 80
-voxels = np.full((nVox**3), True)
 cubeTopLeftCorner = np.float32([+side,-side, side*2+up]) #coordinate angolo in alto a sinistra del cubo grande (facciata frontale)
 voxelCenters = getVoxelsCenters(nVox, side, cubeTopLeftCorner)
 #carve(image, nVox, voxelCenters, voxels, mtx, dist)
@@ -349,8 +344,8 @@ while True:
         break
 
     if frameCounter%10 == 0:
-        #voxelCenters = carve(image, voxelCenters, voxels, mtx, dist, DRAW=False)
-        voxels = carve(image, voxelCenters, voxels, mtx, dist, DRAW=True)
+        voxelCenters = carve(image, voxelCenters, mtx, dist, DRAW=True)
+        #voxels = carve(image, voxelCenters, voxels, mtx, dist, DRAW=True)
         #estraiSilhouette(image)
         #res, backSub = estraiSilhouette(image, backSub)
     k = cv2.waitKey(1) & 0xff    
@@ -361,5 +356,5 @@ while True:
 # Release the VideoCapture Object.
 print("Fine Carving")
 vidcap.release()
-saveToPLY(nomeFile, voxels, voxelCenters)
+saveToPLY(nomeFile, voxelCenters)
 cv2.destroyAllWindows()
