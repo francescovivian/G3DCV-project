@@ -6,43 +6,15 @@ import pickle
 import matplotlib.pyplot as plt
 
 def drawBoxes(img, corners, imgpts):
-
     imgpts = np.int32(imgpts).reshape(-1,2)
-
     # draw ground floor in green
     img = cv2.drawContours(img, [imgpts[:4]],-1,(0,255,0),-3)
-
     # draw pillars in blue color
     for i,j in zip(range(4),range(4,8)):
         img = cv2.line(img, tuple(imgpts[i]), tuple(imgpts[j]),(255),3)
-
     # draw top layer in red color
     img = cv2.drawContours(img, [imgpts[4:]],-1,(0,0,255),3)
-
     return img
-
-def estraiSilhouetteVecchio(image):
-
-    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-
-    # Perform color-segmentation to get the binary mask
-    lwr = np.array([0, 0, 0])
-    upr = np.array([179, 255, 146])
-    msk = cv2.inRange(hsv, lwr, upr)
-
-    # Extracting the rod using binary-mask
-    krn = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 3))
-    dlt = cv2.dilate(msk, krn, iterations = 5)
-    dlt = cv2.erode(dlt, krn, iterations = 5)
-    
-    
-
-    res = 255 - cv2.bitwise_and(dlt, msk)
-
-    # Display
-    cv2.imshow("original", image)
-    cv2.imshow("res", res)
-    return res
 
 def estraiSilhouette(image):
     flood = image.copy()
@@ -197,7 +169,6 @@ def pulisciContorni(contorni):
             cy = int(M['m01']/M['m00'])
             center = np.array([cx,cy])
         approx_c = cv2.approxPolyDP(cont,5,True)
-        #approx_c = cv2.approxPolyDP(cont, 0.01 * cv2.arcLength(cont, True), True)
         if len(approx_c) == 5:
             convex = concave = 0
             for i in range(5):
@@ -246,7 +217,6 @@ def calcolaRMS(predictions, targets):
     return xErr, yErr
 
 def poseEstimation(image, mtx, dist):
-
 
     contorni = estraiContorni(image)
     indexConcave, marksCont = pulisciContorni(contorni)
@@ -318,36 +288,29 @@ def saveToPLY(name, voxelCenters):
 
 nomeFile = "\obj01"
 vidcap = cv2.VideoCapture("data" + nomeFile + ".mp4")
-#ret, image = vidcap.read()
 
 with open('mtx.pkl', 'rb') as f:
     mtx = pickle.load(f)
 with open('dist.pkl', 'rb') as f:
     dist = pickle.load(f)
 
-nVox = 50
+nVox = 70
 side = 65
 up = 80
 cubeTopLeftCorner = np.float32([+side,-side, side*2+up]) #coordinate angolo in alto a sinistra del cubo grande (facciata frontale)
 voxelCenters = getVoxelsCenters(nVox, side, cubeTopLeftCorner)
-#carve(image, nVox, voxelCenters, voxels, mtx, dist)
 frameCounter = 0
 
 
 vidcap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 while True:    
     ret, image = vidcap.read()
-    if frameCounter == 0:
-        print(image.shape)
     frameCounter += 1
     if not ret:
         break
 
     if frameCounter%10 == 0:
         voxelCenters = carve(image, voxelCenters, mtx, dist, DRAW=True)
-        #voxels = carve(image, voxelCenters, voxels, mtx, dist, DRAW=True)
-        #estraiSilhouette(image)
-        #res, backSub = estraiSilhouette(image, backSub)
     k = cv2.waitKey(1) & 0xff    
     # Check if 'q' key is pressed.
     if k == ord('q'):
