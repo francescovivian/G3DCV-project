@@ -24,8 +24,8 @@ def estraiSilhouette(image):
     seed2 = (840, 540)  #gambe triceratopo
     seed3 = (960, 540)  #bicchiere
     cv2.floodFill(flood, None, seedPoint=seed, newVal=(0, 0, 0), loDiff=(4, 4, 4, 4), upDiff=(4, 4, 4, 4))
-    #if (gs[540][840] < 80 and gs[540][840] > 60):
-    #    cv2.floodFill(flood, None, seedPoint=seed2, newVal=(0, 0, 0), loDiff=(4, 4, 4, 4), upDiff=(4, 4, 4, 4))
+    if (gs[540][840] < 75 and gs[540][840] > 65):
+        cv2.floodFill(flood, None, seedPoint=seed2, newVal=(0, 0, 0), loDiff=(4, 4, 4, 4), upDiff=(4, 4, 4, 4))
     #cv2.floodFill(flood, None, seedPoint=seed3, newVal=(0, 0, 0), loDiff=(4, 4, 4, 4), upDiff=(4, 4, 4, 4))
 
     res = cv2.cvtColor(flood, cv2.COLOR_BGR2GRAY)
