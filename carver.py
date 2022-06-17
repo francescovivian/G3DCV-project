@@ -12,8 +12,7 @@ Funzione che estrae la silhouette dell'oggetto da un frame.
     del colore desiderato, in questo caso nero (0,0,0).
 
     nel caso del triceratopo, parte dello sfondo è tra le gambe e non confinante con il seed, seed2 è un punto tra le gambe
-    da cui ripetere l'operazione. Nonostante il controllo sull'intensità, per oggetti che in quella posizione hanno un colore
-    simile allo sfondo, cancella parte dell'oggetto.
+    da cui ripetere l'operazione.
 
     seed3 è un punto nel bicchiere, per poterlo "rimuovere" dall'immagine ma nel caso di oggetti con colore simile al bicchiere
     come ad esempio il pappagallo, estende il flood anche a parte dell'oggetto. 
@@ -260,10 +259,10 @@ def poseEstimation(image, mtx, dist):
     objPoints,imgPoints = estraiPunti(marksCont, indexConcave, image)
     ret, rvecs, tvecs = cv2.solvePnP(objPoints, imgPoints, mtx, dist, cv2.SOLVEPNP_IPPE)
 
-    """ projImgPts, jac = cv2.projectPoints(objPoints, rvecs, tvecs, mtx, dist)
+    projImgPts, jac = cv2.projectPoints(objPoints, rvecs, tvecs, mtx, dist)
     xErr, yErr = calcolaRMS(projImgPts, imgPoints)
     if xErr>1 or yErr>1:
-        print("RMS maggiore di 1! (" + str(xErr) + ", " + str(yErr) + ")") """
+        print("RMS maggiore di 1! (" + str(xErr) + ", " + str(yErr) + ")")
 
     return rvecs, tvecs
 
@@ -366,8 +365,7 @@ while True:
     #Se viene premuta q, il programma si interrompe
     if k == ord('q'):
         break
-
-# Release the VideoCapture Object.
+    
 print(".. fine carving!")
 vidcap.release()
 if not os.path.exists("results"):

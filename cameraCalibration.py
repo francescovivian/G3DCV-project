@@ -21,7 +21,6 @@ for i in range(0,desiredFrames):
     cv2.imwrite(r"frames\frame%d.jpg" %i, frame)
 
 
-# termination criteria
 criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 objp = np.zeros((9*6,3), np.float32)  
 objp[:,:2] = np.mgrid[0:6,0:9].T.reshape(-1,2)
